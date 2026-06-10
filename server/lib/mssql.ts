@@ -33,7 +33,9 @@ export async function createConnectionPool(
     password,
     server,
     database,
-    stream: true,
+    // Note: the legacy mssql-common set `stream: true`, but on mssql v10
+    // pool-level streaming leaves request.execute() recordsets undefined —
+    // RegistryDb reads buffered recordsets everywhere.
     pool: {
       min: 0,
       // Keeps the acquisition from looping forever if there's a failure.

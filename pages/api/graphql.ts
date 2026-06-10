@@ -101,6 +101,10 @@ export default async function handler(
 
   (req as any).__source = source;
 
+  // Requests arriving through the /graphql rewrite keep their original URL,
+  // which wouldn't match Yoga's configured endpoint.
+  req.url = '/api/graphql';
+
   try {
     return await yoga(req, res);
   } catch (e) {

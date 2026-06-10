@@ -10,6 +10,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Keep the standalone output flat (a lockfile above the repo can make Next
+  // infer a larger workspace and nest server.js under the package name).
+  outputFileTracingRoot: __dirname,
 
   // Read at server boot, so one image serves every environment.
   publicRuntimeConfig: {

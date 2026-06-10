@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "lint": "eslint .",
-    "db:migrate": "ts-node --transpile-only db/migrate.ts",
-    "generate-fixtures": "ts-node --transpile-only scripts/generate-fixtures.ts",
-    "simulate-webhook": "ts-node --transpile-only scripts/simulate-webhook.ts"
+    "db:migrate": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' db/migrate.ts",
+    "generate-fixtures": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/generate-fixtures.ts",
+    "simulate-webhook": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\"}' scripts/simulate-webhook.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.13.0",
