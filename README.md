@@ -17,14 +17,6 @@ repository and modernized:
 | Email | Postmark, called directly | `EmailSender` driver: `postmark` \| `log` |
 | Deploy | Lerna + Travis + shared CodeBuild + EC2-ECS | Terraform (`terraform/`) + per-env CodeBuild + Fargate |
 
-Security hardening applied during the rewrite (all covered by tests):
-- Stripe webhook **fails closed** — unsigned/forged events are rejected in
-  every environment (`pages/api/stripe.ts`, payment drivers).
-- GraphQL and the marriage-intention relay **require an API key**; nothing
-  defaults to `auth: false`.
-- Fixed: partner B's foreign ZIP was written from partner A's country.
-- Fixed: a failed marriage-intention insert reported fake success (key 12345).
-- PII no longer logged; Rollbar scrubs contact fields.
 
 ## Local development
 
