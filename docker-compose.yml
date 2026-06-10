@@ -1,0 +1,39 @@
+services:
+  db:
+    # SQL Server 2022 matches the RDS engine family Terraform provisions.
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: 'LocalDev!Passw0rd'
+    ports:
+      - '1433:1433'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "LocalDev!Passw0rd" -Q "SELECT 1" || exit 1',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      REGISTRY_DATA_DB_SERVER: db
+      REGISTRY_DATA_DB_DATABASE: RegistryCommerce
+      REGISTRY_DATA_DB_USER: registry_app
+      REGISTRY_DATA_DB_PASSWORD: 'LocalDev!AppPassw0rd'
+      STRIPE_WEBHOOK_SECRET: whsec_local_dev_secret
+      PAYMENTS_DRIVER: stub
+      EMAIL_DRIVER: log
+      CONTACT_FORM_DRIVER: stub
+      API_KEYS: local-dev-key
+      WEB_API_KEY: local-dev-web-key
+      FULFILLMENT_API_KEY: local-dev-fulfillment-key

@@ -1,0 +1,1246 @@
+/* eslint no-console: 0 */
+
+import { Context, Source } from '.';
+import moment from 'moment';
+
+import {
+  Resolvers,
+  ResolvableWith,
+  Int,
+} from '@cityofboston/graphql-typescript';
+
+import PaymentsService from '../services/payments/PaymentsService';
+import { processChargeSucceeded } from '../stripe-events';
+
+/** 403-equivalent error for GraphQL responses (replaces Boom.forbidden). */
+class Forbidden extends Error {
+  extensions = { code: 'FORBIDDEN', http: { status: 403 } };
+}
+
+import {
+  CERTIFICATE_COST,
+  calculateCreditCardCost,
+  calculateDebitCardCost,
+} from '../../lib/costs';
+
+import makePaymentValidator from '../../lib/validators/PaymentValidator';
+import makeShippingValidator from '../../lib/validators/ShippingValidator';
+import { OrderType } from '../services/RegistryDb';
+
+/** @graphql input */
+interface DeathCertificateOrderItemInput {
+  id: string;
+  name: string;
+  quantity: Int;
+}
+
+/**
+ * This is the data registry needs to process a birth certificate request.
+ *
+ * @graphql input
+ */
+interface BirthCertificateOrderItemInput {
+  firstName: string;
+  lastName: string;
+  alternateSpellings: string;
+  /** ISO8601 format. Should be midnight UTC on the date. */
+  birthDate: string;
+  parent1FirstName: string;
+  parent1LastName: string;
+  parent2FirstName: string;
+  parent2LastName: string;
+  uploadSessionId: string;
+  quantity: Int;
+  requestDetails: string;
+}
+
+/**
+ * This is the data registry needs to process a birth certificate request.
+ *
+ * @graphql input
+ */
+interface MarriageCertificateOrderItemInput {
+  /** ISO8601 format. Should be midnight UTC on the date. */
+  dateOfMarriageExact: string;
+  dateOfMarriageUnsure: string;
+  fullName1: string;
+  fullName2: string;
+  maidenName1: string;
+  maidenName2: string;
+  altSpellings1: string;
+  altSpellings2: string;
+  uploadSessionId: string;
+  quantity: Int;
+  requestDetails: string;
+  // customerNotes: string;
+}
+
+/**
+ * Either order or error will be non-null.
+ */
+interface OrderResult {
+  order: SubmittedOrder | null;
+  error: OrderError | null;
+}
+
+interface OrderError {
+  message: string;
+  cause: OrderErrorCause;
+}
+
+interface SubmittedOrder {
+  id: string;
+  contactEmail: string;
+}
+
+enum ChargeOrderErrorCode {
+  CHARGE_EXPIRED = 'CHARGE_EXPIRED',
+  CHARGE_CAPTURED = 'CHARGE_CAPTURED',
+  CHARGE_NOT_FOUND = 'CHARGE_NOT_FOUND',
+  ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
+  UNKNOWN = 'UNKNOWN',
+}
+
+interface ChargeOrderError {
+  code: ChargeOrderErrorCode;
+  message: string;
+}
+
+interface ChargeOrderResult {
+  success: boolean;
+  error: ChargeOrderError | null;
+}
+
+interface DeleteUploadResult {
+  success: boolean;
+  message: string | null;
+}
+
+enum OrderErrorCause {
+  /** Problem is a card error that the user should be able to correct. */
+  USER_PAYMENT = 'USER_PAYMENT',
+  INTERNAL = 'INTERNAL',
+}
+
+export interface Mutation extends ResolvableWith<{}> {
+  submitDeathCertificateOrder(args: {
+    contactName: string;
+    contactEmail: string;
+    confirmContactEmail: string;
+    contactPhone: string;
+
+    shippingName: string;
+    shippingCompanyName: string;
+    shippingAddress1: string;
+    shippingAddress2: string;
+    shippingCity: string;
+    shippingState: string;
+    shippingZip: string;
+
+    cardToken: string;
+    cardLast4: string;
+
+    cardholderName: string;
+    billingAddress1: string;
+    billingAddress2: string;
+    billingCity: string;
+    billingState: string;
+    billingZip: string;
+
+    items: DeathCertificateOrderItemInput[];
+    tracking: boolean;
+    idempotencyKey: string;
+  }): OrderResult;
+
+  submitMarriageIntentionCertificateOrder(args: {
+    Email: string;
+    DayPhone: string;
+
+    AApplicantFName: string;
+    AApplicantLName: string;
+    AApplicantMiddleName: string;
+    AApplicantSuffix: string;
+    APostmarriageSurname: string;
+    ADOB: string;
+    ACurrentAge: string;
+    AOccupation: string;
+    AFatherName: string;
+    AMotherName: string;
+    AFatherSurname: string;
+    AMotherSurname: string;
+    AStreetAddress: string;
+    ACity: string;
+    AState: string;
+    AZIPCode: string;
+    AResidenceCountry: string;
+    AMarriageNumber: string;
+    AStatofLastMarriage: string;
+    APartnershipStatus: string;
+    ADissolutionStatus: string;
+    APartnershipState: string;
+    AParentsMarried: string;
+    ABloodRelative: string;
+    ABloodDescr: string;
+    ABirthplace: string;
+    ABirthState: string;
+    ABirthCountry: string;
+    ASexNum: string;
+    ASex: string;
+    ABirthHospital: string;
+
+    BApplicantFName: string;
+    BApplicantLName: string;
+    BApplicantMiddleName: string;
+    BApplicantSuffix: string;
+    BPostmarriageSurname: string;
+    BDOB: string;
+    BCurrentAge: string;
+    BOccupation: string;
+    BFatherName: string;
+    BMotherName: string;
+    BFatherSurname: string;
+    BMotherSurname: string;
+    BStreetAddress: string;
+    BCity: string;
+    BState: string;
+    BZIPCode: string;
+    BResidenceCountry: string;
+    BMarriageNumber: string;
+    BStatofLastMarriage: string;
+    BPartnershipStatus: string;
+    BDissolutionStatus: string;
+    BPartnershipState: string;
+    BParentsMarried: string;
+    BBloodRelative: string;
+    BBloodDescr: string;
+    BBirthplace: string;
+    BBirthState: string;
+    BBirthCountry: string;
+    BSexNum: string;
+    BSex: string;
+    BBirthHospital: string;
+  }): OrderResult;
+
+  submitBirthCertificateOrder(args: {
+    contactName: string;
+    contactEmail: string;
+    confirmContactEmail: string;
+    contactPhone: string;
+
+    shippingName: string;
+    shippingCompanyName: string;
+    shippingAddress1: string;
+    shippingAddress2: string;
+    shippingCity: string;
+    shippingState: string;
+    shippingZip: string;
+
+    cardToken: string;
+    cardLast4: string;
+
+    cardholderName: string;
+    billingAddress1: string;
+    billingAddress2: string;
+    billingCity: string;
+    billingState: string;
+    billingZip: string;
+
+    item: BirthCertificateOrderItemInput;
+    tracking: boolean;
+
+    idempotencyKey: string;
+  }): OrderResult;
+
+  submitMarriageCertificateOrder(args: {
+    contactName: string;
+    contactEmail: string;
+    confirmContactEmail: string;
+    contactPhone: string;
+
+    shippingName: string;
+    shippingCompanyName: string;
+    shippingAddress1: string;
+    shippingAddress2: string;
+    shippingCity: string;
+    shippingState: string;
+    shippingZip: string;
+
+    cardToken: string;
+    cardLast4: string;
+
+    cardholderName: string;
+    billingAddress1: string;
+    billingAddress2: string;
+    billingCity: string;
+    billingState: string;
+    billingZip: string;
+
+    item: MarriageCertificateOrderItemInput;
+    tracking: boolean;
+
+    idempotencyKey: string;
+  }): OrderResult;
+
+  chargeOrder(args: {
+    type: OrderType;
+    orderId: string;
+    transactionId: string;
+  }): ChargeOrderResult;
+
+  cancelOrder(args: {
+    type: OrderType;
+    orderId: string;
+    transactionId: string;
+  }): ChargeOrderResult;
+
+  deleteUpload(args: {
+    type: OrderType;
+    uploadSessionID: string;
+    attachmentKey: string;
+  }): DeleteUploadResult;
+}
+
+const mutationResolvers: Resolvers<Mutation, Context> = {
+  submitDeathCertificateOrder: async (
+    _root,
+    args,
+    { rollbar, payments, emails, registryDb }
+  ): Promise<OrderResult> => {
+    const {
+      contactName,
+      contactEmail,
+      confirmContactEmail,
+      contactPhone,
+
+      shippingName,
+      shippingCompanyName,
+      shippingAddress1,
+      shippingAddress2,
+      shippingCity,
+      shippingState,
+      shippingZip,
+
+      cardToken,
+      cardLast4,
+
+      cardholderName,
+      billingAddress1,
+      billingAddress2,
+      billingCity,
+      billingState,
+      billingZip,
+
+      items,
+      tracking,
+      idempotencyKey,
+    } = args;
+
+    let totalQuantity = 0;
+
+    items.forEach(({ quantity }) => {
+      if (quantity <= 0) {
+        throw new Error('Certificate quantity may not be less than 0');
+      } else {
+        totalQuantity += quantity;
+      }
+    });
+
+    if (totalQuantity === 0) {
+      throw new Error('Quantity of order is 0');
+    }
+
+    validateAddresses(args);
+
+    // These are all in cents, to match Stripe
+    const { total, serviceFee } = await calculateCostForToken(
+      payments,
+      CERTIFICATE_COST.DEATH,
+      cardToken,
+      totalQuantity,
+      false,
+      tracking
+    );
+
+    const orderId = makeOrderId(OrderType.DeathCertificate);
+    const orderDate = new Date();
+
+    const orderKey = await registryDb.addOrder(
+      OrderType.DeathCertificate,
+      tracking,
+      {
+        orderID: orderId,
+        orderDate,
+        contactName,
+        contactEmail,
+        confirmContactEmail,
+        contactPhone,
+        shippingName,
+        shippingCompany: shippingCompanyName,
+        shippingAddr1: shippingAddress1,
+        shippingAddr2: shippingAddress2,
+        shippingCity,
+        shippingState,
+        shippingZIP: shippingZip,
+        billingName: cardholderName,
+        billingAddr1: billingAddress1,
+        billingAddr2: billingAddress2,
+        billingCity,
+        billingState,
+        billingZIP: billingZip,
+        billingLast4: cardLast4,
+        serviceFee: serviceFee / 100,
+        idempotencyKey,
+        // tracking,
+      }
+    );
+
+    await Promise.all(
+      items.map(({ id, name, quantity }) =>
+        registryDb.addDeathCertificateItem(
+          orderKey,
+          parseInt(id, 10),
+          name,
+          quantity,
+          CERTIFICATE_COST.DEATH / 100
+        )
+      )
+    );
+
+    try {
+      await makeStripeCharge(
+        OrderType.DeathCertificate,
+        { payments, registryDb, rollbar, emails },
+        {
+          orderId,
+          orderKey,
+          quantity: totalQuantity,
+          total,
+          cardToken,
+        }
+      );
+    } catch (e) {
+      // These are user errors due to bad submissions (e.g. wrong CVV code)
+      if ((e as any).type === 'StripeCardError') {
+        return {
+          order: null,
+          error: {
+            message: (e as Error).message,
+            cause: OrderErrorCause.USER_PAYMENT,
+          },
+        };
+      } else {
+        // This will cause it to get logged with Rollbar
+        throw e;
+      }
+    }
+
+    return { order: { id: orderId, contactEmail }, error: null };
+  },
+
+  submitMarriageIntentionCertificateOrder: async (
+    _root,
+    args,
+    // { rollbar, payments, emails, registryDb }
+    { registryDb }
+  ): Promise<OrderResult> => {
+    console.log('mutation > submitMarriageIntentionCertificateOrder:');
+    const {
+      Email,
+      DayPhone,
+      AApplicantFName,
+      AApplicantLName,
+      AApplicantMiddleName,
+      AApplicantSuffix,
+      APostmarriageSurname,
+      ADOB,
+      ACurrentAge,
+      AOccupation,
+      AFatherName,
+      AMotherName,
+      AFatherSurname,
+      AMotherSurname,
+      AStreetAddress,
+      ACity,
+      AState,
+      AZIPCode,
+      AResidenceCountry,
+      AMarriageNumber,
+      AStatofLastMarriage,
+      APartnershipStatus,
+      ADissolutionStatus,
+      APartnershipState,
+      AParentsMarried,
+      ABloodRelative,
+      ABloodDescr,
+      ABirthplace,
+      ABirthState,
+      ABirthCountry,
+      ASexNum,
+      ASex,
+      ABirthHospital,
+      BApplicantFName,
+      BApplicantLName,
+      BApplicantMiddleName,
+      BApplicantSuffix,
+      BPostmarriageSurname,
+      BDOB,
+      BCurrentAge,
+      BOccupation,
+      BFatherName,
+      BMotherName,
+      BFatherSurname,
+      BMotherSurname,
+      BStreetAddress,
+      BCity,
+      BState,
+      BZIPCode,
+      BResidenceCountry,
+      BMarriageNumber,
+      BStatofLastMarriage,
+      BPartnershipStatus,
+      BDissolutionStatus,
+      BPartnershipState,
+      BParentsMarried,
+      BBloodRelative,
+      BBloodDescr,
+      BBirthplace,
+      BBirthState,
+      BBirthCountry,
+      BSexNum,
+      BSex,
+      BBirthHospital,
+    } = args;
+
+    let contactEmail = Email;
+
+    const orderId = makeOrderId(OrderType.MarriageIntentionCertificate);
+    await registryDb.addMarriageIntentionCertificateRequest({
+      Email: Email,
+      DayPhone: DayPhone,
+      AApplicantFName: AApplicantFName,
+      AApplicantLName: AApplicantLName,
+      AApplicantMiddleName: AApplicantMiddleName,
+      AApplicantSuffix: AApplicantSuffix,
+      APostmarriageSurname: APostmarriageSurname,
+      ADOB: ADOB,
+      ACurrentAge: ACurrentAge,
+      AOccupation: AOccupation,
+      AFatherName: AFatherName,
+      AMotherName: AMotherName,
+      AFatherSurname: AFatherSurname,
+      AMotherSurname: AMotherSurname,
+      AStreetAddress: AStreetAddress,
+      ACity: ACity,
+      AState: AState,
+      AZIPCode: AZIPCode,
+      AResidenceCountry: AResidenceCountry,
+      AMarriageNumber: AMarriageNumber,
+      AStatofLastMarriage: AStatofLastMarriage,
+      APartnershipStatus: APartnershipStatus,
+      ADissolutionStatus: ADissolutionStatus,
+      APartnershipState: APartnershipState,
+      AParentsMarried: AParentsMarried,
+      ABloodRelative: ABloodRelative,
+      ABloodDescr: ABloodDescr,
+      ABirthplace: ABirthplace,
+      ABirthState: ABirthState,
+      ABirthCountry: ABirthCountry,
+      ASexNum: ASexNum,
+      ASex: ASex,
+      ABirthHospital: ABirthHospital,
+      BApplicantFName: BApplicantFName,
+      BApplicantLName: BApplicantLName,
+      BApplicantMiddleName: BApplicantMiddleName,
+      BApplicantSuffix: BApplicantSuffix,
+      BPostmarriageSurname: BPostmarriageSurname,
+      BDOB: BDOB,
+      BCurrentAge: BCurrentAge,
+      BOccupation: BOccupation,
+      BFatherName: BFatherName,
+      BMotherName: BMotherName,
+      BFatherSurname: BFatherSurname,
+      BMotherSurname: BMotherSurname,
+      BStreetAddress: BStreetAddress,
+      BCity: BCity,
+      BState: BState,
+      BZIPCode: BZIPCode,
+      BResidenceCountry: BResidenceCountry,
+      BMarriageNumber: BMarriageNumber,
+      BStatofLastMarriage: BStatofLastMarriage,
+      BPartnershipStatus: BPartnershipStatus,
+      BDissolutionStatus: BDissolutionStatus,
+      BPartnershipState: BPartnershipState,
+      BParentsMarried: BParentsMarried,
+      BBloodRelative: BBloodRelative,
+      BBloodDescr: BBloodDescr,
+      BBirthplace: BBirthplace,
+      BBirthState: BBirthState,
+      BBirthCountry: BBirthCountry,
+      BSexNum: BSexNum,
+      BSex: BSex,
+      BBirthHospital: BBirthHospital,
+    });
+
+    return { order: { id: orderId, contactEmail }, error: null };
+  },
+
+  submitBirthCertificateOrder: async (
+    _root,
+    args,
+    { rollbar, payments, emails, registryDb }
+  ): Promise<OrderResult> => {
+    const {
+      contactName,
+      contactEmail,
+      confirmContactEmail,
+      contactPhone,
+
+      shippingName,
+      shippingCompanyName,
+      shippingAddress1,
+      shippingAddress2,
+      shippingCity,
+      shippingState,
+      shippingZip,
+
+      cardToken,
+      cardLast4,
+
+      cardholderName,
+      billingAddress1,
+      billingAddress2,
+      billingCity,
+      billingState,
+      billingZip,
+
+      item,
+      tracking,
+
+      idempotencyKey,
+    } = args;
+
+    if (item.quantity <= 0) {
+      throw new Error('Certificate quantity may not be less than 0');
+    }
+
+    validateAddresses(args);
+
+    // These are all in cents, to match Stripe
+    const { total, serviceFee } = await calculateCostForToken(
+      payments,
+      CERTIFICATE_COST.BIRTH,
+      cardToken,
+      item.quantity,
+      false,
+      tracking
+    );
+
+    const orderId = makeOrderId(OrderType.BirthCertificate);
+    const orderDate = new Date();
+
+    const orderKey = await registryDb.addOrder(
+      OrderType.BirthCertificate,
+      tracking,
+      {
+        orderID: orderId,
+        orderDate,
+        contactName,
+        contactEmail,
+        confirmContactEmail,
+        contactPhone,
+        shippingName,
+        shippingCompany: shippingCompanyName,
+        shippingAddr1: shippingAddress1,
+        shippingAddr2: shippingAddress2,
+        shippingCity,
+        shippingState,
+        shippingZIP: shippingZip,
+        billingName: cardholderName,
+        billingAddr1: billingAddress1,
+        billingAddr2: billingAddress2,
+        billingCity,
+        billingState,
+        billingZIP: billingZip,
+        billingLast4: cardLast4,
+        serviceFee: serviceFee / 100,
+        idempotencyKey,
+        // tracking,
+      }
+    );
+
+    const requestItemKey = await registryDb.addBirthCertificateRequest(
+      orderKey,
+      {
+        certificateFirstName: item.firstName,
+        certificateLastName: item.lastName,
+        alternativeSpellings: item.alternateSpellings,
+        dateOfBirth: new Date(item.birthDate),
+        parent1FirstName: item.parent1FirstName,
+        parent1LastName: item.parent1LastName,
+        parent2FirstName: item.parent2FirstName,
+        parent2LastName: item.parent2LastName,
+        requestDetails: item.requestDetails,
+      },
+      item.quantity,
+      CERTIFICATE_COST.BIRTH / 100
+    );
+
+    await registryDb.addUploadsToOrder(
+      'BC',
+      requestItemKey,
+      item.uploadSessionId
+    );
+
+    try {
+      await makeStripeCharge(
+        OrderType.BirthCertificate,
+        { payments, registryDb, rollbar, emails },
+        {
+          orderId,
+          orderKey,
+          quantity: item.quantity,
+          total,
+          cardToken,
+        }
+      );
+    } catch (e) {
+      // These are user errors due to bad submissions (e.g. wrong CVV code)
+      if ((e as any).type === 'StripeCardError') {
+        return {
+          order: null,
+          error: {
+            message: (e as Error).message,
+            cause: OrderErrorCause.USER_PAYMENT,
+          },
+        };
+      } else {
+        // This will cause it to get logged with Rollbar
+        throw e;
+      }
+    }
+
+    return { order: { id: orderId, contactEmail }, error: null };
+  },
+
+  submitMarriageCertificateOrder: async (
+    _root,
+    args,
+    { rollbar, payments, emails, registryDb }
+  ): Promise<OrderResult> => {
+    const {
+      contactName,
+      contactEmail,
+      confirmContactEmail,
+      contactPhone,
+
+      shippingName,
+      shippingCompanyName,
+      shippingAddress1,
+      shippingAddress2,
+      shippingCity,
+      shippingState,
+      shippingZip,
+
+      cardToken,
+      cardLast4,
+
+      cardholderName,
+      billingAddress1,
+      billingAddress2,
+      billingCity,
+      billingState,
+      billingZip,
+
+      item,
+      tracking,
+
+      idempotencyKey,
+    } = args;
+
+    if (item.quantity <= 0) {
+      throw new Error('Certificate quantity may not be less than 0');
+    }
+
+    validateAddresses(args);
+
+    // These are all in cents, to match Stripe
+    const { total, serviceFee } = await calculateCostForToken(
+      payments,
+      CERTIFICATE_COST.MARRIAGE,
+      cardToken,
+      item.quantity,
+      false,
+      tracking
+    );
+
+    const orderId = makeOrderId(OrderType.MarriageCertificate);
+    const orderDate = new Date();
+
+    const orderKey = await registryDb.addOrder(
+      OrderType.MarriageCertificate,
+      tracking,
+      {
+        orderID: orderId,
+        orderDate,
+        contactName,
+        contactEmail,
+        confirmContactEmail,
+        contactPhone,
+        shippingName,
+        shippingCompany: shippingCompanyName,
+        shippingAddr1: shippingAddress1,
+        shippingAddr2: shippingAddress2,
+        shippingCity,
+        shippingState,
+        shippingZIP: shippingZip,
+        billingName: cardholderName,
+        billingAddr1: billingAddress1,
+        billingAddr2: billingAddress2,
+        billingCity,
+        billingState,
+        billingZIP: billingZip,
+        billingLast4: cardLast4,
+        serviceFee: serviceFee / 100,
+        idempotencyKey,
+        // tracking,
+      }
+    );
+
+    const requestItemKey = await registryDb.addMarriageCertificateRequest(
+      orderKey,
+      {
+        certificateFullName1: item.fullName1,
+        certificateFullName2: item.fullName2,
+        certificateMaidenName1: item.maidenName1,
+        certificateMaidenName2: item.maidenName2,
+        certificateAltSpellings1: item.altSpellings1,
+        certificateAltSpellings2: item.altSpellings2,
+        dateOfMarriageExact: item.dateOfMarriageExact,
+        dateOfMarriageUnsure: item.dateOfMarriageUnsure,
+        requestDetails: item.requestDetails,
+        // customerNotes: item.customerNotes,
+      },
+      item.quantity,
+      CERTIFICATE_COST.MARRIAGE / 100
+    );
+
+    await registryDb.addUploadsToOrder(
+      'MC',
+      requestItemKey,
+      item.uploadSessionId
+    );
+
+    try {
+      await makeStripeCharge(
+        OrderType.MarriageCertificate,
+        { payments, registryDb, rollbar, emails },
+        {
+          orderId,
+          orderKey,
+          quantity: item.quantity,
+          total,
+          cardToken,
+        }
+      );
+    } catch (e) {
+      // These are user errors due to bad submissions (e.g. wrong CVV code)
+      if ((e as any).type === 'StripeCardError') {
+        return {
+          order: null,
+          error: {
+            message: (e as Error).message,
+            cause: OrderErrorCause.USER_PAYMENT,
+          },
+        };
+      } else {
+        // This will cause it to get logged with Rollbar
+        throw e;
+      }
+    }
+
+    return { order: { id: orderId, contactEmail }, error: null };
+  },
+
+  chargeOrder: async (
+    _root,
+    { transactionId },
+    { rollbar, payments, source }
+  ): Promise<ChargeOrderResult> => {
+    requireFulfillmentUser(source);
+
+    try {
+      await payments.captureCharge(transactionId);
+
+      return {
+        success: true,
+        error: null,
+      };
+    } catch (e) {
+      rollbar.error(e as any);
+
+      switch ((e as any).code) {
+        case 'charge_expired_for_capture':
+          return {
+            success: false,
+            error: {
+              code: ChargeOrderErrorCode.CHARGE_EXPIRED,
+              message:
+                'This charge has expired because 7 days have passed since it was created.',
+            },
+          };
+
+        case 'resource_missing':
+          return {
+            success: false,
+            error: {
+              code: ChargeOrderErrorCode.CHARGE_NOT_FOUND,
+              message: 'Stripe does not have a record of that transaction ID',
+            },
+          };
+
+        default:
+          return {
+            success: false,
+            error: {
+              code: ChargeOrderErrorCode.UNKNOWN,
+              message: (e as any).message || (e as any).toString(),
+            },
+          };
+      }
+    }
+  },
+
+  async cancelOrder(
+    _root,
+    { transactionId },
+    { rollbar, payments, source }
+  ): Promise<ChargeOrderResult> {
+    requireFulfillmentUser(source);
+
+    try {
+      const charge = await payments.retrieveCharge(transactionId);
+
+      if (charge.captured) {
+        return {
+          success: false,
+          error: {
+            code: ChargeOrderErrorCode.CHARGE_CAPTURED,
+            message: 'This charge was already captured. Cannot cancel it.',
+          },
+        };
+      } else if (charge.refunded) {
+        // no-op if the charge was already refunded
+        return {
+          success: true,
+          error: null,
+        };
+      }
+
+      await payments.refundCharge(transactionId);
+
+      return {
+        success: true,
+        error: null,
+      };
+    } catch (e) {
+      rollbar.error(e as any);
+
+      switch ((e as any).code) {
+        case 'resource_missing':
+          return {
+            success: false,
+            error: {
+              code: ChargeOrderErrorCode.CHARGE_NOT_FOUND,
+              message: 'Stripe does not have a record of that transaction ID',
+            },
+          };
+
+        default:
+          return {
+            success: false,
+            error: {
+              code: ChargeOrderErrorCode.UNKNOWN,
+              message: (e as any).message || (e as any).toString(),
+            },
+          };
+      }
+    }
+  },
+
+  async deleteUpload(
+    _root,
+    { type, uploadSessionID, attachmentKey },
+    { registryDb }
+  ): Promise<DeleteUploadResult> {
+    if (type === OrderType.DeathCertificate) {
+      throw new Error(
+        'Can only delete birth or marriage certificate attachments'
+      );
+    }
+
+    const error = await registryDb.deleteFileAttachment(
+      type,
+      uploadSessionID,
+      attachmentKey
+    );
+
+    if (error) {
+      return {
+        success: false,
+        message: error,
+      };
+    } else {
+      return {
+        success: true,
+        message: null,
+      };
+    }
+  },
+};
+
+/**
+ * Throws an exception if the arguments do not match the shipping / payment
+ * validators.
+ */
+function validateAddresses(args: {
+  contactName: string;
+  contactEmail: string;
+  confirmContactEmail: string;
+  contactPhone: string;
+
+  shippingName: string;
+  shippingCompanyName: string;
+  shippingAddress1: string;
+  shippingAddress2: string;
+  shippingCity: string;
+  shippingState: string;
+  shippingZip: string;
+
+  cardToken: string;
+  cardLast4: string;
+
+  cardholderName: string;
+  billingAddress1: string;
+  billingAddress2: string;
+  billingCity: string;
+  billingState: string;
+  billingZip: string;
+}) {
+  const {
+    contactName,
+    contactEmail,
+    confirmContactEmail,
+    contactPhone,
+
+    shippingName,
+    shippingCompanyName,
+    shippingAddress1,
+    shippingAddress2,
+    shippingCity,
+    shippingState,
+    shippingZip,
+
+    cardholderName,
+    billingAddress1,
+    billingAddress2,
+    billingCity,
+    billingState,
+    billingZip,
+  } = args;
+
+  const shippingValidator = makeShippingValidator({
+    contactName,
+    contactEmail,
+    confirmContactEmail,
+    contactPhone,
+    shippingName,
+    shippingCompanyName,
+    shippingAddress1,
+    shippingAddress2,
+    shippingCity,
+    shippingState,
+    shippingZip,
+  });
+
+  const paymentValidator = makePaymentValidator({
+    cardholderName,
+    billingAddressSameAsShippingAddress: false,
+    billingAddress1,
+    billingAddress2,
+    billingCity,
+    billingState,
+    billingZip,
+  });
+
+  shippingValidator.check();
+  paymentValidator.check();
+
+  if (shippingValidator.fails() || paymentValidator.fails()) {
+    const errors = {
+      ...shippingValidator.errors.all(),
+      ...paymentValidator.errors.all(),
+    };
+    const message = Object.keys(errors)
+      .map(field => `${field}: ${errors[field].join(', ')}`)
+      .join('\n');
+
+    const err: any = new Error('Shipping validation errors');
+    err.message = message;
+
+    throw err;
+  }
+}
+
+async function calculateCostForToken(
+  payments: PaymentsService,
+  eachCost: number,
+  cardToken: string,
+  quantity: number,
+  hasResearchFee: boolean,
+  tracking: boolean
+) {
+  // We have to look the token up again so we can figure out what fee
+  // structure to use. We do *not* trust the client to send us this
+  // information.
+  const funding = await payments.retrieveTokenFunding(cardToken);
+
+  return funding === 'credit'
+    ? calculateCreditCardCost(eachCost, quantity, hasResearchFee, tracking)
+    : calculateDebitCardCost(eachCost, quantity, hasResearchFee, tracking);
+}
+
+function makeOrderId(type: OrderType): string {
+  let prefix: string;
+
+  switch (type) {
+    case OrderType.BirthCertificate:
+      prefix = 'BC';
+      break;
+    case OrderType.DeathCertificate:
+      prefix = 'DC';
+      break;
+    case OrderType.MarriageCertificate:
+      prefix = 'MC';
+      break;
+    case OrderType.MarriageIntentionCertificate:
+      prefix = 'MIC';
+      break;
+    default:
+      throw new Error('Unexpected OrderType: ' + type);
+  }
+
+  const datePart = moment().format('YYYYMM');
+
+  // gives us a 7-digit number that doesn't start with 0
+  const randomPart = 1000000 + Math.floor(Math.abs(Math.random()) * 8999999);
+
+  return `RG-${prefix}${datePart}-${randomPart}`;
+}
+
+async function makeStripeCharge(
+  type: OrderType,
+  {
+    payments,
+    registryDb,
+    rollbar,
+    emails,
+  }: Pick<Context, 'payments' | 'registryDb' | 'rollbar' | 'emails'>,
+  {
+    total,
+    cardToken,
+    orderId,
+    orderKey,
+    quantity,
+  }: {
+    total: number;
+    cardToken: string;
+    orderId: string;
+    orderKey: number;
+    quantity: number;
+  }
+): Promise<void> {
+  let description: string;
+  let unitPrice: number;
+  let capture: boolean;
+
+  switch (type) {
+    case OrderType.DeathCertificate:
+      description = 'Death certificates (Registry)';
+      unitPrice = CERTIFICATE_COST.DEATH;
+      capture = true;
+      break;
+    case OrderType.BirthCertificate:
+      description = 'Birth certificates (Registry)';
+      unitPrice = CERTIFICATE_COST.BIRTH;
+      capture = false;
+      break;
+    case OrderType.MarriageCertificate:
+      description = 'Marriage certificates (Registry)';
+      unitPrice = CERTIFICATE_COST.MARRIAGE;
+      capture = false;
+      break;
+    default:
+      throw new Error('Unknown OrderType: ' + type);
+  }
+
+  try {
+    const charge = await payments.createCharge({
+      amount: total,
+      cardToken,
+      description,
+      capture,
+      statementDescriptor: 'CITYBOSTON*REG + FEE',
+      metadata: {
+        'webapp.name': 'registry-certs',
+        'webapp.nodeEnv': process.env.NODE_ENV || 'development',
+        'order.orderId': orderId,
+        'order.orderKey': orderKey.toString(),
+        'order.orderType': type,
+        'order.source': 'registry',
+        'order.quantity': quantity.toString(),
+        'order.unitPrice': unitPrice.toString(),
+      },
+    });
+
+    // The Stripe charge is the last thing in the request because if it
+    // succeeds, we consider the order to have been completed successfully.
+    // (This is certainly true from the customer’s perspective!)
+    //
+    // Sending the receipt email and marking the order as paid in the DB is
+    // handled in response to a Stripe webhook for maximum reliability
+    // (because Stripe will retry webhooks if they fail).
+
+    // We can only get the Stripe callback when in production, so we fake it for dev.
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      await processChargeSucceeded({ payments, emails, registryDb }, charge);
+    }
+  } catch (e) {
+    try {
+      await registryDb.cancelOrder(orderKey, 'Stripe charge create failed');
+    } catch (e) {
+      console.log('CANCEL ORDER FAILED');
+      // Let Rollbar know, but still fail the mutation with the original
+      // error.
+      rollbar.error(e as any);
+    }
+
+    throw e;
+  }
+}
+
+function requireFulfillmentUser(source: Source) {
+  // Enforced in every environment, not just production (the legacy
+  // production-only check let charge/cancel be called by anyone on non-prod
+  // instances). Tests opt out explicitly.
+  const bypass =
+    process.env.NODE_ENV === 'test' ||
+    process.env.ALLOW_FULFILLMENT_BYPASS === '1';
+
+  if (!bypass && source !== 'fulfillment') {
+    throw new Forbidden(`Source ${source} may not call this mutation`);
+  }
+}
+
+export const resolvers = {
+  Mutation: mutationResolvers,
+};

@@ -1,0 +1,20 @@
+.env
+.env.local
+
+/node_modules
+/.next
+/build
+/coverage
+/storybook-static
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.sample
+.terraform.lock.hcl
+
+# misc
+.DS_Store
+*.tsbuildinfo

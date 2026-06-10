@@ -1,0 +1,170 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`rendering renders confirmation 1`] = `
+<ConfirmationContent
+  cart={
+    DeathCertificateCart {
+      "cardType": "-1",
+      "entries": Array [],
+      "localStorageDisposer": null,
+      "pendingFetches": 0,
+      "siteAnalytics": null,
+    }
+  }
+  contactEmail="ttoe@squirrelzone.net"
+  orderId="123-456-7"
+/>
+`;
+
+exports[`rendering renders payment 1`] = `
+<PaymentContent
+  cardType="-1"
+  certificateType="death"
+  deathCertificateCart={
+    DeathCertificateCart {
+      "cardType": "-1",
+      "entries": Array [],
+      "localStorageDisposer": null,
+      "pendingFetches": 0,
+      "siteAnalytics": null,
+    }
+  }
+  order={
+    Order {
+      "idempotencyKey": null,
+      "info": Object {
+        "billingAddress1": "",
+        "billingAddress2": "",
+        "billingAddressSameAsShippingAddress": true,
+        "billingCity": "",
+        "billingState": "MA",
+        "billingZip": "",
+        "cardFunding": "unknown",
+        "cardLast4": "",
+        "cardToken": null,
+        "cardholderName": "",
+        "confirmContactEmail": "",
+        "contactEmail": "",
+        "contactName": "",
+        "contactPhone": "",
+        "shippingAddress1": "",
+        "shippingAddress2": "",
+        "shippingCity": "",
+        "shippingCompanyName": "",
+        "shippingName": "",
+        "shippingState": "MA",
+        "shippingZip": "",
+        "storeBilling": false,
+        "storeContactAndShipping": false,
+      },
+      "localStorageAvailable": true,
+      "processing": false,
+      "updateStorageDisposer": null,
+    }
+  }
+  stripe={null}
+  submit={[Function]}
+  tracking={false}
+/>
+`;
+
+exports[`rendering renders review 1`] = `
+<ReviewContent
+  certificateType="death"
+  deathCertificateCart={
+    DeathCertificateCart {
+      "cardType": "-1",
+      "entries": Array [],
+      "localStorageDisposer": null,
+      "pendingFetches": 0,
+      "siteAnalytics": null,
+    }
+  }
+  order={
+    Order {
+      "idempotencyKey": null,
+      "info": Object {
+        "billingAddress1": "",
+        "billingAddress2": "",
+        "billingAddressSameAsShippingAddress": true,
+        "billingCity": "",
+        "billingState": "MA",
+        "billingZip": "",
+        "cardFunding": "unknown",
+        "cardLast4": "",
+        "cardToken": null,
+        "cardholderName": "",
+        "confirmContactEmail": "",
+        "contactEmail": "",
+        "contactName": "",
+        "contactPhone": "",
+        "shippingAddress1": "",
+        "shippingAddress2": "",
+        "shippingCity": "",
+        "shippingCompanyName": "",
+        "shippingName": "",
+        "shippingState": "MA",
+        "shippingZip": "",
+        "storeBilling": false,
+        "storeContactAndShipping": false,
+      },
+      "localStorageAvailable": true,
+      "processing": false,
+      "updateStorageDisposer": null,
+    }
+  }
+  submit={[Function]}
+  tracking={false}
+/>
+`;
+
+exports[`rendering renders shipping 1`] = `
+<ShippingContent
+  cardType="-1"
+  certificateType="death"
+  deathCertificateCart={
+    DeathCertificateCart {
+      "cardType": "-1",
+      "entries": Array [],
+      "localStorageDisposer": null,
+      "pendingFetches": 0,
+      "siteAnalytics": null,
+    }
+  }
+  order={
+    Order {
+      "idempotencyKey": null,
+      "info": Object {
+        "billingAddress1": "",
+        "billingAddress2": "",
+        "billingAddressSameAsShippingAddress": true,
+        "billingCity": "",
+        "billingState": "MA",
+        "billingZip": "",
+        "cardFunding": "unknown",
+        "cardLast4": "",
+        "cardToken": null,
+        "cardholderName": "",
+        "confirmContactEmail": "",
+        "contactEmail": "",
+        "contactName": "",
+        "contactPhone": "",
+        "shippingAddress1": "",
+        "shippingAddress2": "",
+        "shippingCity": "",
+        "shippingCompanyName": "",
+        "shippingName": "",
+        "shippingState": "MA",
+        "shippingZip": "",
+        "storeBilling": false,
+        "storeContactAndShipping": false,
+      },
+      "localStorageAvailable": true,
+      "processing": false,
+      "updateStorageDisposer": null,
+    }
+  }
+  submit={[Function]}
+  tracking={false}
+/>
+`;

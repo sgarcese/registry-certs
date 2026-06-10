@@ -1,0 +1,3 @@
+domain_name           = "registry-certs-staging.example.gov"
+route53_zone_id       = "Z0000000000000000000"
+github_repository_url = "https://github.com/CityOfBoston/registry-certs.git"

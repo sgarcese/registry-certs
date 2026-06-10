@@ -1,0 +1,165 @@
+
+scalar Date
+
+type DeathCertificate {
+  age: String
+  birthDate: String
+  deathDate: String
+  deathYear: String!
+  firstName: String!
+  id: String!
+  lastName: String!
+  pending: Boolean!
+}
+
+type DeathCertificateSearch {
+  page: Int!
+  pageCount: Int!
+  pageSize: Int!
+  resultCount: Int!
+  results: [DeathCertificate!]!
+}
+
+type CertificateOrderItem {
+  certificate: DeathCertificate
+  cost: Float!
+  id: String!
+  quantity: Int!
+}
+
+type DeathCertificateOrder {
+  billingAddress1: String!
+  billingAddress2: String!
+  billingCity: String!
+  billingState: String!
+  billingZip: String!
+  cardholderName: String!
+  certificateCost: Float!
+  contactEmail: String!
+  contactName: String!
+  contactPhone: String!
+  date: String!
+  id: String!
+  items: [CertificateOrderItem!]!
+  serviceFee: Float!
+  shippingAddress1: String!
+  shippingAddress2: String!
+  shippingCity: String!
+  shippingCompanyName: String!
+  shippingName: String!
+  shippingState: String!
+  shippingZip: String!
+  subtotal: Float!
+  total: Float!
+}
+
+type DeathCertificates {
+  certificate(id: String!): DeathCertificate
+  certificates(ids: [String!]!): [DeathCertificate]!
+  order(id: String!, contactEmail: String!): DeathCertificateOrder
+  search(query: String!, page: Int, pageSize: Int, startYear: String, endYear: String): DeathCertificateSearch!
+}
+
+type Query {
+  deathCertificates: DeathCertificates!
+}
+
+input DeathCertificateOrderItemInput {
+  id: String!
+  name: String!
+  quantity: Int!
+}
+
+type SubmittedOrder {
+  contactEmail: String!
+  id: String!
+}
+
+enum OrderErrorCause {
+  USER_PAYMENT
+  INTERNAL
+}
+
+type OrderError {
+  cause: OrderErrorCause!
+  message: String!
+}
+
+type OrderResult {
+  error: OrderError
+  order: SubmittedOrder
+}
+
+input BirthCertificateOrderItemInput {
+  alternateSpellings: String!
+  birthDate: String!
+  firstName: String!
+  lastName: String!
+  parent1FirstName: String!
+  parent1LastName: String!
+  parent2FirstName: String!
+  parent2LastName: String!
+  quantity: Int!
+  requestDetails: String!
+  uploadSessionId: String!
+}
+
+input MarriageCertificateOrderItemInput {
+  altSpellings1: String!
+  altSpellings2: String!
+  dateOfMarriageExact: String!
+  dateOfMarriageUnsure: String!
+  fullName1: String!
+  fullName2: String!
+  maidenName1: String!
+  maidenName2: String!
+  quantity: Int!
+  requestDetails: String!
+  uploadSessionId: String!
+}
+
+enum OrderType {
+  DC
+  BC
+  MC
+  MIC
+}
+
+enum ChargeOrderErrorCode {
+  CHARGE_EXPIRED
+  CHARGE_CAPTURED
+  CHARGE_NOT_FOUND
+  ORDER_NOT_FOUND
+  UNKNOWN
+}
+
+type ChargeOrderError {
+  code: ChargeOrderErrorCode!
+  message: String!
+}
+
+type ChargeOrderResult {
+  error: ChargeOrderError
+  success: Boolean!
+}
+
+type DeleteUploadResult {
+  message: String
+  success: Boolean!
+}
+
+type Mutation {
+  cancelOrder(type: OrderType!, orderId: String!, transactionId: String!): ChargeOrderResult!
+  chargeOrder(type: OrderType!, orderId: String!, transactionId: String!): ChargeOrderResult!
+  deleteUpload(type: OrderType!, uploadSessionID: String!, attachmentKey: String!): DeleteUploadResult!
+  submitBirthCertificateOrder(contactName: String!, contactEmail: String!, confirmContactEmail: String!, contactPhone: String!, shippingName: String!, shippingCompanyName: String!, shippingAddress1: String!, shippingAddress2: String!, shippingCity: String!, shippingState: String!, shippingZip: String!, cardToken: String!, cardLast4: String!, cardholderName: String!, billingAddress1: String!, billingAddress2: String!, billingCity: String!, billingState: String!, billingZip: String!, item: BirthCertificateOrderItemInput!, tracking: Boolean!, idempotencyKey: String!): OrderResult!
+  submitDeathCertificateOrder(contactName: String!, contactEmail: String!, confirmContactEmail: String!, contactPhone: String!, shippingName: String!, shippingCompanyName: String!, shippingAddress1: String!, shippingAddress2: String!, shippingCity: String!, shippingState: String!, shippingZip: String!, cardToken: String!, cardLast4: String!, cardholderName: String!, billingAddress1: String!, billingAddress2: String!, billingCity: String!, billingState: String!, billingZip: String!, items: [DeathCertificateOrderItemInput!]!, tracking: Boolean!, idempotencyKey: String!): OrderResult!
+  submitMarriageCertificateOrder(contactName: String!, contactEmail: String!, confirmContactEmail: String!, contactPhone: String!, shippingName: String!, shippingCompanyName: String!, shippingAddress1: String!, shippingAddress2: String!, shippingCity: String!, shippingState: String!, shippingZip: String!, cardToken: String!, cardLast4: String!, cardholderName: String!, billingAddress1: String!, billingAddress2: String!, billingCity: String!, billingState: String!, billingZip: String!, item: MarriageCertificateOrderItemInput!, tracking: Boolean!, idempotencyKey: String!): OrderResult!
+  submitMarriageIntentionCertificateOrder(Email: String!, DayPhone: String!, AApplicantFName: String!, AApplicantLName: String!, AApplicantMiddleName: String!, AApplicantSuffix: String!, APostmarriageSurname: String!, ADOB: String!, ACurrentAge: String!, AOccupation: String!, AFatherName: String!, AMotherName: String!, AFatherSurname: String!, AMotherSurname: String!, AStreetAddress: String!, ACity: String!, AState: String!, AZIPCode: String!, AResidenceCountry: String!, AMarriageNumber: String!, AStatofLastMarriage: String!, APartnershipStatus: String!, ADissolutionStatus: String!, APartnershipState: String!, AParentsMarried: String!, ABloodRelative: String!, ABloodDescr: String!, ABirthplace: String!, ABirthState: String!, ABirthCountry: String!, ASexNum: String!, ASex: String!, ABirthHospital: String!, BApplicantFName: String!, BApplicantLName: String!, BApplicantMiddleName: String!, BApplicantSuffix: String!, BPostmarriageSurname: String!, BDOB: String!, BCurrentAge: String!, BOccupation: String!, BFatherName: String!, BMotherName: String!, BFatherSurname: String!, BMotherSurname: String!, BStreetAddress: String!, BCity: String!, BState: String!, BZIPCode: String!, BResidenceCountry: String!, BMarriageNumber: String!, BStatofLastMarriage: String!, BPartnershipStatus: String!, BDissolutionStatus: String!, BPartnershipState: String!, BParentsMarried: String!, BBloodRelative: String!, BBloodDescr: String!, BBirthplace: String!, BBirthState: String!, BBirthCountry: String!, BSexNum: String!, BSex: String!, BBirthHospital: String!): OrderResult!
+}
+
+schema {
+  mutation: Mutation
+  query: Query
+}
+

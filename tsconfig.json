@@ -1,0 +1,55 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "jsx": "preserve",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "useDefineForClassFields": false,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": false,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "lib": ["dom", "dom.iterable", "es2022"],
+    "types": ["node", "jest", "stripe-v3", "@emotion/react/types/css-prop"],
+    "baseUrl": ".",
+    "paths": {
+      "@cityofboston/react-fleet": ["vendor/react-fleet/react-fleet.ts"],
+      "@cityofboston/next-client-common": [
+        "vendor/next-client-common/next-client-common.ts"
+      ],
+      "@cityofboston/graphql-typescript": [
+        "vendor/graphql-typescript/graphql-typescript.ts"
+      ]
+    }
+  },
+  "include": [
+    "client/**/*",
+    "lib/**/*",
+    "pages/**/*",
+    "server/**/*",
+    "utils/**/*",
+    "vendor/**/*",
+    "db/**/*",
+    "scripts/**/*",
+    "next-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    "**/*.stories.tsx",
+    "**/*.stories.ts",
+    ".storybook"
+  ]
+}

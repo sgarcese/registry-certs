@@ -1,0 +1,62 @@
+version: 0.2
+
+# Deploy pipeline (one CodeBuild project per environment; see
+# terraform/modules/codebuild). Phases: test -> docker build -> push ECR ->
+# DB migrations (build runs inside the VPC, so RDS is reachable) ->
+# image-only task-definition revision -> ECS service update.
+#
+# Environment variables provided by the CodeBuild project:
+#   DEPLOY_ENV, AWS_ACCOUNT_ID, ECR_REPOSITORY_URL, ECS_CLUSTER, ECS_SERVICE,
+#   TASK_FAMILY, DB_MASTER_SECRET_ARN, APP_SECRET_ARN,
+#   REGISTRY_DATA_DB_SERVER, REGISTRY_DATA_DB_DATABASE
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+
+  pre_build:
+    commands:
+      - export GIT_SHA=$(git rev-parse --short=12 HEAD || echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c1-12)
+      - export IMAGE_SHA="$ECR_REPOSITORY_URL:$GIT_SHA"
+      - export IMAGE_ENV="$ECR_REPOSITORY_URL:$DEPLOY_ENV"
+      - aws ecr get-login-password | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - npm ci --no-audit --no-fund
+
+  build:
+    commands:
+      # Quality gates
+      - npm run typecheck
+      - npm test -- --ci
+
+      # Container build (next build runs inside the Dockerfile)
+      - docker build -t "$IMAGE_SHA" -t "$IMAGE_ENV" .
+      - docker push "$IMAGE_SHA"
+      - docker push "$IMAGE_ENV"
+
+  post_build:
+    commands:
+      # --- DB migrations (admin creds from the RDS-managed master secret;
+      #     the app login password from the per-env app secret) ---
+      - export DB_ADMIN_USER=$(aws secretsmanager get-secret-value --secret-id "$DB_MASTER_SECRET_ARN" --query SecretString --output text | python3 -c 'import sys,json; print(json.load(sys.stdin)["username"])')
+      - export DB_ADMIN_PASSWORD=$(aws secretsmanager get-secret-value --secret-id "$DB_MASTER_SECRET_ARN" --query SecretString --output text | python3 -c 'import sys,json; print(json.load(sys.stdin)["password"])')
+      - export REGISTRY_DATA_DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET_ARN" --query SecretString --output text | python3 -c 'import sys,json; print(json.load(sys.stdin)["REGISTRY_DATA_DB_PASSWORD"])')
+      - npm run db:migrate
+
+      # --- Image-only task definition revision; Terraform owns the template ---
+      - |
+        aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+          --query 'taskDefinition' --output json \
+        | python3 -c "
+        import json, sys
+        td = json.load(sys.stdin)
+        td['containerDefinitions'][0]['image'] = '$IMAGE_SHA'
+        for k in ['taskDefinitionArn','revision','status','requiresAttributes','compatibilities','registeredAt','registeredBy','deregisteredAt']:
+            td.pop(k, None)
+        print(json.dumps(td))
+        " > /tmp/task-def.json
+      - aws ecs register-task-definition --cli-input-json file:///tmp/task-def.json > /tmp/registered.json
+      - export NEW_TD_ARN=$(python3 -c "import json; print(json.load(open('/tmp/registered.json'))['taskDefinition']['taskDefinitionArn'])")
+      - aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --task-definition "$NEW_TD_ARN" > /dev/null
+      - aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+      - echo "Deployed $IMAGE_SHA to $DEPLOY_ENV"
